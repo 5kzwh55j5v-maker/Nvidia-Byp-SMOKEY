@@ -7,6 +7,9 @@ struct ImFont;
 
 namespace Overlay {
 
+float ClientWidth();
+float ClientHeight();
+
 bool Init();
 void Shutdown();
 HWND GetWindowHandle();

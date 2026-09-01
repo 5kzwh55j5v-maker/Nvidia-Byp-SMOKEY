@@ -151,7 +151,7 @@ void DrawCheckboxRow(const char* label, bool* value, const std::function<void(bo
 }
 
 void DrawMainPanel() {
-    const ImVec2 panel_size(384.0f, 444.0f);
+    const ImVec2 panel_size(Overlay::ClientWidth(), Overlay::ClientHeight());
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowSize(panel_size, ImGuiCond_Always);
 

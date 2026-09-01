@@ -233,10 +233,10 @@ bool Overlay::Init() {
     const int y = (GetSystemMetrics(SM_CYSCREEN) - kHeight) / 2;
 
     g_hwnd = CreateWindowExW(
-        WS_EX_APPWINDOW,
+        WS_EX_TOOLWINDOW,
         kWindowClass,
         L"Nvidia Byp SMOKEY",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        WS_POPUP,
         x, y, kWidth, kHeight,
         nullptr, nullptr, wc.hInstance, nullptr);
 
@@ -296,8 +296,7 @@ void Overlay::SetMenuVisible(bool visible) {
     }
 
     if (visible) {
-        ShowWindow(g_hwnd, SW_SHOW);
-        SetForegroundWindow(g_hwnd);
+        ShowWindow(g_hwnd, SW_SHOWNA);
         UpdateWindow(g_hwnd);
     } else {
         ShowWindow(g_hwnd, SW_HIDE);
@@ -373,3 +372,17 @@ ImFont* Overlay::TitleFont() { return g_title_font; }
 ImFont* Overlay::BodyFont() { return g_body_font; }
 ImFont* Overlay::SmallFont() { return g_small_font; }
 ImFont* Overlay::ButtonFont() { return g_button_font; }
+
+float Overlay::ClientWidth() {
+    if (!g_hwnd) return static_cast<float>(kWidth);
+    RECT rect{};
+    GetClientRect(g_hwnd, &rect);
+    return static_cast<float>(rect.right - rect.left);
+}
+
+float Overlay::ClientHeight() {
+    if (!g_hwnd) return static_cast<float>(kHeight);
+    RECT rect{};
+    GetClientRect(g_hwnd, &rect);
+    return static_cast<float>(rect.bottom - rect.top);
+}
