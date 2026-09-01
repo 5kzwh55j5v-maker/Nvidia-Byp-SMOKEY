@@ -17,8 +17,8 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"NvidiaBypSMOKEYOverlay";
-constexpr int kWidth = 400;
-constexpr int kHeight = 420;
+constexpr int kWidth = 440;
+constexpr int kHeight = 500;
 
 ID3D11Device* g_pd3d_device = nullptr;
 ID3D11DeviceContext* g_pd3d_device_ctx = nullptr;
@@ -26,9 +26,11 @@ IDXGISwapChain* g_swap_chain = nullptr;
 ID3D11RenderTargetView* g_main_render_target = nullptr;
 HWND g_hwnd = nullptr;
 bool g_running = true;
+bool g_menu_visible = true;
 ImFont* g_title_font = nullptr;
 ImFont* g_body_font = nullptr;
 ImFont* g_small_font = nullptr;
+ImFont* g_button_font = nullptr;
 
 void CreateRenderTarget() {
     ID3D11Texture2D* back_buffer = nullptr;
@@ -100,10 +102,11 @@ void StyleModernImGui() {
     style.TabRounding = 12.0f;
     style.WindowBorderSize = 0.0f;
     style.FrameBorderSize = 0.0f;
-    style.WindowPadding = ImVec2(24.0f, 24.0f);
-    style.FramePadding = ImVec2(14.0f, 10.0f);
-    style.ItemSpacing = ImVec2(14.0f, 16.0f);
-    style.ItemInnerSpacing = ImVec2(10.0f, 8.0f);
+    style.WindowPadding = ImVec2(28.0f, 28.0f);
+    style.FramePadding = ImVec2(16.0f, 12.0f);
+    style.ItemSpacing = ImVec2(16.0f, 20.0f);
+    style.ItemInnerSpacing = ImVec2(12.0f, 10.0f);
+    style.CellPadding = ImVec2(12.0f, 10.0f);
 
     ImVec4* colors = style.Colors;
     colors[ImGuiCol_Text] = ImVec4(0.96f, 0.96f, 0.98f, 1.00f);
@@ -120,24 +123,28 @@ void StyleModernImGui() {
     colors[ImGuiCol_Separator] = ImVec4(0.24f, 0.26f, 0.34f, 1.00f);
 }
 
-ImFont* LoadBoldFont(float size) {
+ImFont* LoadBoldFont(float size, float glyph_extra_x = 1.0f) {
     const char* candidates[] = {
         "C:\\Windows\\Fonts\\segoeuib.ttf",
         "C:\\Windows\\Fonts\\SegoeUI-Bold.ttf",
         "C:\\Windows\\Fonts\\arialbd.ttf",
+        "C:\\Windows\\Fonts\\ariblk.ttf",
     };
 
     ImGuiIO& io = ImGui::GetIO();
+    ImFontConfig cfg{};
+    cfg.OversampleH = 4;
+    cfg.OversampleV = 4;
+    cfg.PixelSnapH = true;
+    cfg.GlyphExtraSpacing.x = glyph_extra_x;
+
     for (const char* path : candidates) {
-        if (ImFont* font = io.Fonts->AddFontFromFileTTF(path, size)) {
+        if (ImFont* font = io.Fonts->AddFontFromFileTTF(path, size, &cfg)) {
             return font;
         }
     }
 
-    ImFontConfig cfg{};
     cfg.SizePixels = size;
-    cfg.OversampleH = 3;
-    cfg.OversampleV = 3;
     return io.Fonts->AddFontDefault(&cfg);
 }
 
@@ -218,9 +225,10 @@ bool Overlay::Init() {
     io.IniFilename = nullptr;
 
     StyleModernImGui();
-    g_title_font = LoadBoldFont(26.0f);
-    g_body_font = LoadBoldFont(18.0f);
-    g_small_font = LoadBoldFont(15.0f);
+    g_title_font = LoadBoldFont(34.0f, 1.4f);
+    g_body_font = LoadBoldFont(22.0f, 1.1f);
+    g_button_font = LoadBoldFont(22.0f, 1.2f);
+    g_small_font = LoadBoldFont(18.0f, 0.8f);
 
     ImGui_ImplWin32_Init(g_hwnd);
     ImGui_ImplDX11_Init(g_pd3d_device, g_pd3d_device_ctx);
@@ -245,6 +253,25 @@ HWND Overlay::GetWindowHandle() {
     return g_hwnd;
 }
 
+void Overlay::SetMenuVisible(bool visible) {
+    g_menu_visible = visible;
+    if (!g_hwnd) {
+        return;
+    }
+
+    if (visible) {
+        ShowWindow(g_hwnd, SW_SHOW);
+        SetForegroundWindow(g_hwnd);
+        UpdateWindow(g_hwnd);
+    } else {
+        ShowWindow(g_hwnd, SW_HIDE);
+    }
+}
+
+bool Overlay::IsMenuVisible() {
+    return g_menu_visible;
+}
+
 bool Overlay::ProcessFrame(const std::function<void()>& draw) {
     MSG msg{};
     while (PeekMessageW(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
@@ -257,6 +284,15 @@ bool Overlay::ProcessFrame(const std::function<void()>& draw) {
 
     if (!g_running) {
         return false;
+    }
+
+    if (draw) {
+        draw();
+    }
+
+    if (!g_menu_visible) {
+        Sleep(16);
+        return true;
     }
 
     ImGui_ImplDX11_NewFrame();
@@ -280,3 +316,4 @@ bool Overlay::ProcessFrame(const std::function<void()>& draw) {
 ImFont* Overlay::TitleFont() { return g_title_font; }
 ImFont* Overlay::BodyFont() { return g_body_font; }
 ImFont* Overlay::SmallFont() { return g_small_font; }
+ImFont* Overlay::ButtonFont() { return g_button_font; }
