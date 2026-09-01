@@ -27,17 +27,31 @@ ID3D11RenderTargetView* g_main_render_target = nullptr;
 HWND g_hwnd = nullptr;
 bool g_running = true;
 bool g_menu_visible = true;
+bool g_swap_chain_occluded = false;
+UINT g_resize_width = 0;
+UINT g_resize_height = 0;
+
 ImFont* g_title_font = nullptr;
 ImFont* g_body_font = nullptr;
 ImFont* g_small_font = nullptr;
 ImFont* g_button_font = nullptr;
 
 void CreateRenderTarget() {
+    CleanupRenderTarget();
+    if (!g_swap_chain || !g_pd3d_device) {
+        return;
+    }
+
     ID3D11Texture2D* back_buffer = nullptr;
-    g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
-    if (back_buffer) {
-        g_pd3d_device->CreateRenderTargetView(back_buffer, nullptr, &g_main_render_target);
-        back_buffer->Release();
+    const HRESULT hr = g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
+    if (hr != S_OK || !back_buffer) {
+        return;
+    }
+
+    const HRESULT hr_rv = g_pd3d_device->CreateRenderTargetView(back_buffer, nullptr, &g_main_render_target);
+    back_buffer->Release();
+    if (hr_rv != S_OK) {
+        g_main_render_target = nullptr;
     }
 }
 
@@ -51,6 +65,8 @@ void CleanupRenderTarget() {
 bool CreateDeviceD3D(HWND hwnd) {
     DXGI_SWAP_CHAIN_DESC sd{};
     sd.BufferCount = 2;
+    sd.BufferDesc.Width = 0;
+    sd.BufferDesc.Height = 0;
     sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     sd.BufferDesc.RefreshRate.Numerator = 60;
     sd.BufferDesc.RefreshRate.Denominator = 1;
@@ -58,21 +74,28 @@ bool CreateDeviceD3D(HWND hwnd) {
     sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     sd.OutputWindow = hwnd;
     sd.SampleDesc.Count = 1;
+    sd.SampleDesc.Quality = 0;
     sd.Windowed = TRUE;
     sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
     const D3D_FEATURE_LEVEL levels[2] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_0 };
     D3D_FEATURE_LEVEL feature_level{};
-    const HRESULT res = D3D11CreateDeviceAndSwapChain(
+    HRESULT res = D3D11CreateDeviceAndSwapChain(
         nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, levels, 2, D3D11_SDK_VERSION,
         &sd, &g_swap_chain, &g_pd3d_device, &feature_level, &g_pd3d_device_ctx);
 
     if (res == DXGI_ERROR_UNSUPPORTED) {
-        return D3D11CreateDeviceAndSwapChain(
+        res = D3D11CreateDeviceAndSwapChain(
             nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, levels, 2, D3D11_SDK_VERSION,
-            &sd, &g_swap_chain, &g_pd3d_device, &feature_level, &g_pd3d_device_ctx) == S_OK;
+            &sd, &g_swap_chain, &g_pd3d_device, &feature_level, &g_pd3d_device_ctx);
     }
-    return res == S_OK;
+
+    if (res != S_OK) {
+        return false;
+    }
+
+    CreateRenderTarget();
+    return g_main_render_target != nullptr;
 }
 
 void CleanupDeviceD3D() {
@@ -123,7 +146,15 @@ void StyleModernImGui() {
     colors[ImGuiCol_Separator] = ImVec4(0.24f, 0.26f, 0.34f, 1.00f);
 }
 
-ImFont* LoadBoldFont(float size, float glyph_extra_x = 1.0f) {
+ImFont* LoadSizedFont(float size, float glyph_extra_x) {
+    ImGuiIO& io = ImGui::GetIO();
+    ImFontConfig cfg{};
+    cfg.OversampleH = 4;
+    cfg.OversampleV = 4;
+    cfg.PixelSnapH = true;
+    cfg.GlyphExtraSpacing.x = glyph_extra_x;
+    cfg.MergeMode = true;
+
     const char* candidates[] = {
         "C:\\Windows\\Fonts\\segoeuib.ttf",
         "C:\\Windows\\Fonts\\SegoeUI-Bold.ttf",
@@ -131,21 +162,31 @@ ImFont* LoadBoldFont(float size, float glyph_extra_x = 1.0f) {
         "C:\\Windows\\Fonts\\ariblk.ttf",
     };
 
-    ImGuiIO& io = ImGui::GetIO();
-    ImFontConfig cfg{};
-    cfg.OversampleH = 4;
-    cfg.OversampleV = 4;
-    cfg.PixelSnapH = true;
-    cfg.GlyphExtraSpacing.x = glyph_extra_x;
-
     for (const char* path : candidates) {
         if (ImFont* font = io.Fonts->AddFontFromFileTTF(path, size, &cfg)) {
             return font;
         }
     }
 
+    cfg.MergeMode = false;
     cfg.SizePixels = size;
     return io.Fonts->AddFontDefault(&cfg);
+}
+
+void LoadAppFonts() {
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->AddFontDefault();
+    g_body_font = LoadSizedFont(22.0f, 1.1f);
+    g_title_font = LoadSizedFont(34.0f, 1.4f);
+    g_button_font = LoadSizedFont(22.0f, 1.2f);
+    g_small_font = LoadSizedFont(18.0f, 0.8f);
+
+    if (!g_body_font) {
+        g_body_font = io.Fonts->Fonts[0];
+    }
+    g_title_font = g_title_font ? g_title_font : g_body_font;
+    g_button_font = g_button_font ? g_button_font : g_body_font;
+    g_small_font = g_small_font ? g_small_font : g_body_font;
 }
 
 void ApplyWindowChrome(HWND hwnd) {
@@ -164,11 +205,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 
     switch (msg) {
     case WM_SIZE:
-        if (g_pd3d_device != nullptr && wparam != SIZE_MINIMIZED) {
-            CleanupRenderTarget();
-            g_swap_chain->ResizeBuffers(0, LOWORD(lparam), HIWORD(lparam), DXGI_FORMAT_UNKNOWN, 0);
-            CreateRenderTarget();
+        if (wparam == SIZE_MINIMIZED) {
+            return 0;
         }
+        g_resize_width = LOWORD(lparam);
+        g_resize_height = HIWORD(lparam);
         return 0;
     case WM_DESTROY:
         g_running = false;
@@ -182,6 +223,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 } // namespace
 
 bool Overlay::Init() {
+    ImGui_ImplWin32_EnableDpiAwareness();
+
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);
     wc.style = CS_CLASSDC;
@@ -216,7 +259,6 @@ bool Overlay::Init() {
 
     ShowWindow(g_hwnd, SW_SHOWDEFAULT);
     UpdateWindow(g_hwnd);
-    CreateRenderTarget();
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -225,13 +267,11 @@ bool Overlay::Init() {
     io.IniFilename = nullptr;
 
     StyleModernImGui();
-    g_title_font = LoadBoldFont(34.0f, 1.4f);
-    g_body_font = LoadBoldFont(22.0f, 1.1f);
-    g_button_font = LoadBoldFont(22.0f, 1.2f);
-    g_small_font = LoadBoldFont(18.0f, 0.8f);
 
     ImGui_ImplWin32_Init(g_hwnd);
     ImGui_ImplDX11_Init(g_pd3d_device, g_pd3d_device_ctx);
+
+    LoadAppFonts();
 
     return true;
 }
@@ -286,11 +326,29 @@ bool Overlay::ProcessFrame(const std::function<void()>& draw) {
         return false;
     }
 
-    if (draw) {
-        draw();
+    if (!g_menu_visible) {
+        Sleep(16);
+        return true;
     }
 
-    if (!g_menu_visible) {
+    if (g_swap_chain_occluded && g_swap_chain) {
+        const HRESULT test = g_swap_chain->Present(0, DXGI_PRESENT_TEST);
+        if (test == DXGI_STATUS_OCCLUDED) {
+            Sleep(10);
+            return true;
+        }
+        g_swap_chain_occluded = false;
+    }
+
+    if (g_resize_width != 0 && g_resize_height != 0 && g_swap_chain) {
+        CleanupRenderTarget();
+        g_swap_chain->ResizeBuffers(0, g_resize_width, g_resize_height, DXGI_FORMAT_UNKNOWN, 0);
+        g_resize_width = 0;
+        g_resize_height = 0;
+        CreateRenderTarget();
+    }
+
+    if (!g_main_render_target || !g_pd3d_device_ctx || !g_swap_chain) {
         Sleep(16);
         return true;
     }
@@ -308,7 +366,9 @@ bool Overlay::ProcessFrame(const std::function<void()>& draw) {
     g_pd3d_device_ctx->OMSetRenderTargets(1, &g_main_render_target, nullptr);
     g_pd3d_device_ctx->ClearRenderTargetView(g_main_render_target, clear);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-    g_swap_chain->Present(1, 0);
+
+    const HRESULT hr = g_swap_chain->Present(1, 0);
+    g_swap_chain_occluded = (hr == DXGI_STATUS_OCCLUDED);
 
     return g_running;
 }

@@ -285,13 +285,13 @@ int App::Run() {
 
     ApplyStreamProof(Overlay::GetWindowHandle(), true);
 
-    while (Overlay::ProcessFrame([]() {
+    while (true) {
         PollMenuBindCapture();
         PollMenuToggle();
-        if (Overlay::IsMenuVisible()) {
-            DrawMainPanel();
+
+        if (!Overlay::ProcessFrame(DrawMainPanel)) {
+            break;
         }
-    })) {
         if (g_request_shutdown) {
             break;
         }
