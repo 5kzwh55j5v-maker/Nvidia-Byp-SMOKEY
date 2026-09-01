@@ -2,10 +2,11 @@ name: Windows Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'cursor/**']
     tags: ['v*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
