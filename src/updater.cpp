@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <winhttp.h>
 #include <shlwapi.h>
+#include <shellapi.h>
 #include <string>
 #include <thread>
 #include <vector>
