@@ -1,0 +1,282 @@
+#define WIN32_LEAN_AND_MEAN
+#include "overlay.h"
+
+#include <d3d11.h>
+#include <dwmapi.h>
+
+#include "imgui.h"
+#include "backends/imgui_impl_dx11.h"
+#include "backends/imgui_impl_win32.h"
+
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "dwmapi.lib")
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+namespace {
+
+constexpr wchar_t kWindowClass[] = L"NvidiaBypSMOKEYOverlay";
+constexpr int kWidth = 400;
+constexpr int kHeight = 420;
+
+ID3D11Device* g_pd3d_device = nullptr;
+ID3D11DeviceContext* g_pd3d_device_ctx = nullptr;
+IDXGISwapChain* g_swap_chain = nullptr;
+ID3D11RenderTargetView* g_main_render_target = nullptr;
+HWND g_hwnd = nullptr;
+bool g_running = true;
+ImFont* g_title_font = nullptr;
+ImFont* g_body_font = nullptr;
+ImFont* g_small_font = nullptr;
+
+void CreateRenderTarget() {
+    ID3D11Texture2D* back_buffer = nullptr;
+    g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
+    if (back_buffer) {
+        g_pd3d_device->CreateRenderTargetView(back_buffer, nullptr, &g_main_render_target);
+        back_buffer->Release();
+    }
+}
+
+void CleanupRenderTarget() {
+    if (g_main_render_target) {
+        g_main_render_target->Release();
+        g_main_render_target = nullptr;
+    }
+}
+
+bool CreateDeviceD3D(HWND hwnd) {
+    DXGI_SWAP_CHAIN_DESC sd{};
+    sd.BufferCount = 2;
+    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    sd.BufferDesc.RefreshRate.Numerator = 60;
+    sd.BufferDesc.RefreshRate.Denominator = 1;
+    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    sd.OutputWindow = hwnd;
+    sd.SampleDesc.Count = 1;
+    sd.Windowed = TRUE;
+    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+    const D3D_FEATURE_LEVEL levels[2] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_0 };
+    D3D_FEATURE_LEVEL feature_level{};
+    const HRESULT res = D3D11CreateDeviceAndSwapChain(
+        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, levels, 2, D3D11_SDK_VERSION,
+        &sd, &g_swap_chain, &g_pd3d_device, &feature_level, &g_pd3d_device_ctx);
+
+    if (res == DXGI_ERROR_UNSUPPORTED) {
+        return D3D11CreateDeviceAndSwapChain(
+            nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, levels, 2, D3D11_SDK_VERSION,
+            &sd, &g_swap_chain, &g_pd3d_device, &feature_level, &g_pd3d_device_ctx) == S_OK;
+    }
+    return res == S_OK;
+}
+
+void CleanupDeviceD3D() {
+    CleanupRenderTarget();
+    if (g_swap_chain) {
+        g_swap_chain->Release();
+        g_swap_chain = nullptr;
+    }
+    if (g_pd3d_device_ctx) {
+        g_pd3d_device_ctx->Release();
+        g_pd3d_device_ctx = nullptr;
+    }
+    if (g_pd3d_device) {
+        g_pd3d_device->Release();
+        g_pd3d_device = nullptr;
+    }
+}
+
+void StyleModernImGui() {
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowRounding = 18.0f;
+    style.ChildRounding = 14.0f;
+    style.FrameRounding = 12.0f;
+    style.PopupRounding = 12.0f;
+    style.ScrollbarRounding = 12.0f;
+    style.GrabRounding = 12.0f;
+    style.TabRounding = 12.0f;
+    style.WindowBorderSize = 0.0f;
+    style.FrameBorderSize = 0.0f;
+    style.WindowPadding = ImVec2(24.0f, 24.0f);
+    style.FramePadding = ImVec2(14.0f, 10.0f);
+    style.ItemSpacing = ImVec2(14.0f, 16.0f);
+    style.ItemInnerSpacing = ImVec2(10.0f, 8.0f);
+
+    ImVec4* colors = style.Colors;
+    colors[ImGuiCol_Text] = ImVec4(0.96f, 0.96f, 0.98f, 1.00f);
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.55f, 0.55f, 0.62f, 1.00f);
+    colors[ImGuiCol_WindowBg] = ImVec4(0.09f, 0.09f, 0.14f, 1.00f);
+    colors[ImGuiCol_ChildBg] = ImVec4(0.11f, 0.11f, 0.17f, 1.00f);
+    colors[ImGuiCol_FrameBg] = ImVec4(0.14f, 0.14f, 0.22f, 1.00f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.18f, 0.18f, 0.28f, 1.00f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.22f, 0.22f, 0.34f, 1.00f);
+    colors[ImGuiCol_CheckMark] = ImVec4(0.46f, 0.78f, 0.12f, 1.00f);
+    colors[ImGuiCol_Button] = ImVec4(0.46f, 0.78f, 0.12f, 1.00f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.56f, 0.88f, 0.18f, 1.00f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.36f, 0.66f, 0.08f, 1.00f);
+    colors[ImGuiCol_Separator] = ImVec4(0.24f, 0.26f, 0.34f, 1.00f);
+}
+
+ImFont* LoadBoldFont(float size) {
+    const char* candidates[] = {
+        "C:\\Windows\\Fonts\\segoeuib.ttf",
+        "C:\\Windows\\Fonts\\SegoeUI-Bold.ttf",
+        "C:\\Windows\\Fonts\\arialbd.ttf",
+    };
+
+    ImGuiIO& io = ImGui::GetIO();
+    for (const char* path : candidates) {
+        if (ImFont* font = io.Fonts->AddFontFromFileTTF(path, size)) {
+            return font;
+        }
+    }
+
+    ImFontConfig cfg{};
+    cfg.SizePixels = size;
+    cfg.OversampleH = 3;
+    cfg.OversampleV = 3;
+    return io.Fonts->AddFontDefault(&cfg);
+}
+
+void ApplyWindowChrome(HWND hwnd) {
+    BOOL dark = TRUE;
+    DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
+
+    enum { DWMWCP_ROUND = 2 };
+    const int round = DWMWCP_ROUND;
+    DwmSetWindowAttribute(hwnd, 33, &round, sizeof(round));
+}
+
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam)) {
+        return TRUE;
+    }
+
+    switch (msg) {
+    case WM_SIZE:
+        if (g_pd3d_device != nullptr && wparam != SIZE_MINIMIZED) {
+            CleanupRenderTarget();
+            g_swap_chain->ResizeBuffers(0, LOWORD(lparam), HIWORD(lparam), DXGI_FORMAT_UNKNOWN, 0);
+            CreateRenderTarget();
+        }
+        return 0;
+    case WM_DESTROY:
+        g_running = false;
+        PostQuitMessage(0);
+        return 0;
+    default:
+        return DefWindowProcW(hwnd, msg, wparam, lparam);
+    }
+}
+
+} // namespace
+
+bool Overlay::Init() {
+    WNDCLASSEXW wc{};
+    wc.cbSize = sizeof(wc);
+    wc.style = CS_CLASSDC;
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = kWindowClass;
+    RegisterClassExW(&wc);
+
+    const int x = (GetSystemMetrics(SM_CXSCREEN) - kWidth) / 2;
+    const int y = (GetSystemMetrics(SM_CYSCREEN) - kHeight) / 2;
+
+    g_hwnd = CreateWindowExW(
+        WS_EX_APPWINDOW,
+        kWindowClass,
+        L"Nvidia Byp SMOKEY",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        x, y, kWidth, kHeight,
+        nullptr, nullptr, wc.hInstance, nullptr);
+
+    if (!g_hwnd) {
+        return false;
+    }
+
+    ApplyWindowChrome(g_hwnd);
+
+    if (!CreateDeviceD3D(g_hwnd)) {
+        CleanupDeviceD3D();
+        DestroyWindow(g_hwnd);
+        g_hwnd = nullptr;
+        return false;
+    }
+
+    ShowWindow(g_hwnd, SW_SHOWDEFAULT);
+    UpdateWindow(g_hwnd);
+    CreateRenderTarget();
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.IniFilename = nullptr;
+
+    StyleModernImGui();
+    g_title_font = LoadBoldFont(26.0f);
+    g_body_font = LoadBoldFont(18.0f);
+    g_small_font = LoadBoldFont(15.0f);
+
+    ImGui_ImplWin32_Init(g_hwnd);
+    ImGui_ImplDX11_Init(g_pd3d_device, g_pd3d_device_ctx);
+
+    return true;
+}
+
+void Overlay::Shutdown() {
+    ImGui_ImplDX11_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
+
+    CleanupDeviceD3D();
+    if (g_hwnd) {
+        DestroyWindow(g_hwnd);
+        g_hwnd = nullptr;
+    }
+    UnregisterClassW(kWindowClass, GetModuleHandleW(nullptr));
+}
+
+HWND Overlay::GetWindowHandle() {
+    return g_hwnd;
+}
+
+bool Overlay::ProcessFrame(const std::function<void()>& draw) {
+    MSG msg{};
+    while (PeekMessageW(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+        if (msg.message == WM_QUIT) {
+            g_running = false;
+        }
+    }
+
+    if (!g_running) {
+        return false;
+    }
+
+    ImGui_ImplDX11_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+
+    if (draw) {
+        draw();
+    }
+
+    ImGui::Render();
+    const float clear[4] = { 0.09f, 0.09f, 0.14f, 1.0f };
+    g_pd3d_device_ctx->OMSetRenderTargets(1, &g_main_render_target, nullptr);
+    g_pd3d_device_ctx->ClearRenderTargetView(g_main_render_target, clear);
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    g_swap_chain->Present(1, 0);
+
+    return g_running;
+}
+
+ImFont* Overlay::TitleFont() { return g_title_font; }
+ImFont* Overlay::BodyFont() { return g_body_font; }
+ImFont* Overlay::SmallFont() { return g_small_font; }

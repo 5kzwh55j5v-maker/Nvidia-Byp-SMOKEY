@@ -4,12 +4,13 @@ Windows utility that launches the NVIDIA bridge payload and exposes a small mode
 
 ## Features
 
-- Calls `NvCore::Launch()` once before overlay HWND initialization (background inject into `nvcontainer.exe`)
+- Modern **ImGui** panel (DirectX 11) with rounded styling and bold Segoe UI
+- Calls `NvCore::Launch()` once before overlay / ImGui initialization
 - **Streamproof** checkbox toggles `SetWindowDisplayAffinity` on the overlay window:
   - checked → `WDA_EXCLUDEFROMCAPTURE`
   - unchecked → `WDA_NONE`
+- **Nvidia Bypass** checkbox toggles inject / unload of the NVIDIA bridge payload
 - **Unload** tears down the injected payload then closes the app
-- Warning label: *Don't Press Because Freeze Clips*
 - Auto-update from GitHub Releases on startup
 - **Administrator required** — UAC prompt on launch (elevated token kept for inject/unload)
 

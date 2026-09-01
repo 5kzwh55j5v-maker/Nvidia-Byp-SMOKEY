@@ -420,11 +420,27 @@ static DWORD WINAPI inject_thread(LPVOID) {
 }
 
 void Launch() {
-    static LONG fired = 0;
-    if (InterlockedExchange(&fired, 1) != 0) return;
     EnsurePrivileges();
     ensure_inject_lock();
+    EnterCriticalSection(&g_inject_lock);
+
+    if (g_inject.mapped) {
+        LeaveCriticalSection(&g_inject_lock);
+        return;
+    }
+
+    if (g_inject_thread) {
+        const DWORD wait = WaitForSingleObject(g_inject_thread, 0);
+        if (wait == WAIT_TIMEOUT) {
+            LeaveCriticalSection(&g_inject_lock);
+            return;
+        }
+        CloseHandle(g_inject_thread);
+        g_inject_thread = nullptr;
+    }
+
     g_inject_thread = CreateThread(nullptr, 0, inject_thread, nullptr, 0, nullptr);
+    LeaveCriticalSection(&g_inject_lock);
 }
 
 void EnsurePrivileges() {
