@@ -62,13 +62,6 @@ void CreateRenderTarget() {
     }
 }
 
-void CleanupRenderTarget() {
-    if (g_main_render_target) {
-        g_main_render_target->Release();
-        g_main_render_target = nullptr;
-    }
-}
-
 bool CreateDeviceD3D(HWND hwnd) {
     DXGI_SWAP_CHAIN_DESC sd{};
     sd.BufferCount = 2;
