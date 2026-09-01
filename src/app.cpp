@@ -20,7 +20,7 @@
 namespace {
 
 bool g_request_shutdown = false;
-bool g_streamproof = false;
+bool g_streamproof = true;
 bool g_nvidia_bypass = false;
 bool g_listening_for_bind = false;
 int g_menu_vk = VK_INSERT;
@@ -283,7 +283,7 @@ int App::Run() {
         return 1;
     }
 
-    ApplyStreamProof(Overlay::GetWindowHandle(), false);
+    ApplyStreamProof(Overlay::GetWindowHandle(), true);
 
     while (Overlay::ProcessFrame([]() {
         PollMenuBindCapture();
