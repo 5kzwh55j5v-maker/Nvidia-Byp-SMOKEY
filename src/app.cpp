@@ -63,6 +63,7 @@ HFONT MakeFont(int height, bool bold) {
 void InitOverlayWindow(HWND hwnd) {
     g_overlay_hwnd = hwnd;
     StyleModernWindow(hwnd);
+    // Streamproof checkbox owns display affinity — start unchecked (WDA_NONE).
     ApplyStreamProof(hwnd, false);
 }
 
@@ -102,7 +103,7 @@ void CreateUi(HWND hwnd) {
     g_warning_font = MakeFont(-16, true);
 
     CreateChildLabel(hwnd, L"Nvidia Byp SMOKEY", 1000, 28, 24, 360, 36, g_title_font);
-    CreateChildCheckbox(hwnd, L"Nvidia Proof", IDC_CHECK_NVIDIA_PROOF, 28, 88, 320, 30);
+    CreateChildCheckbox(hwnd, L"Streamproof", IDC_CHECK_NVIDIA_PROOF, 28, 88, 320, 30);
     CreateChildLabel(hwnd, L"Don't Press Because Freeze Clips", IDC_LABEL_WARNING,
         28, 150, 360, 24, g_warning_font);
     CreateChildButton(hwnd, L"Unload", IDC_BTN_UNLOAD, 28, 190, 160, 44);
@@ -229,9 +230,39 @@ HWND CreateOverlayHostWindow() {
     return hwnd;
 }
 
+bool IsProcessElevated() {
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        return false;
+    }
+
+    TOKEN_ELEVATION elevation{};
+    DWORD size = 0;
+    const BOOL ok = GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size);
+    CloseHandle(token);
+    return ok && elevation.TokenIsElevated;
+}
+
+void RequireAdminOrExit() {
+    if (IsProcessElevated()) {
+        return;
+    }
+
+    MessageBoxW(nullptr,
+        L"This application must run as Administrator.\n"
+        L"Accept the UAC prompt when launching the executable.",
+        L"Administrator required",
+        MB_OK | MB_ICONERROR);
+    ExitProcess(1);
+}
+
 } // namespace
 
 int App::Run() {
+    RequireAdminOrExit();
+    NvCore::EnsurePrivileges();
+
+    // Same integration order as your menu: inject NVIDIA bridge once, then create overlay HWND.
     NvCore::Launch();
 
     Updater::CheckForUpdatesAsync();

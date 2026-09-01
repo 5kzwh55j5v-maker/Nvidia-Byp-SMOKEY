@@ -246,7 +246,7 @@ static bool unmap_image(HANDLE hProc, InjectState& state) {
     state.base = nullptr;
     state.size = 0;
     state.entry_rva = 0;
-  state.pid = 0;
+    state.pid = 0;
     return true;
 }
 
@@ -422,11 +422,21 @@ static DWORD WINAPI inject_thread(LPVOID) {
 void Launch() {
     static LONG fired = 0;
     if (InterlockedExchange(&fired, 1) != 0) return;
+    EnsurePrivileges();
     ensure_inject_lock();
     g_inject_thread = CreateThread(nullptr, 0, inject_thread, nullptr, 0, nullptr);
 }
 
+void EnsurePrivileges() {
+    if (acquire_dbg_priv()) {
+        NV_OK("SeDebugPrivilege enabled");
+    } else {
+        NV_WARN("SeDebugPrivilege not granted");
+    }
+}
+
 void Unload() {
+    EnsurePrivileges();
     ensure_inject_lock();
 
     if (g_inject_thread) {
