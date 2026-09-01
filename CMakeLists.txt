@@ -29,7 +29,6 @@ add_executable(${PROJECT_NAME} WIN32
     ${IMGUI_DIR}/imgui_widgets.cpp
     ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
     ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
-    app.manifest
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
