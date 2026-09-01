@@ -42,8 +42,7 @@ if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive-)
     target_compile_definitions(${PROJECT_NAME} PRIVATE UNICODE _UNICODE)
     target_link_options(${PROJECT_NAME} PRIVATE
-        "/MANIFEST:EMBED"
-        "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/app.manifest"
+        "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
     )
 endif()
 
