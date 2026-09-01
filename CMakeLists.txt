@@ -18,14 +18,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE include src)
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive-)
     target_compile_definitions(${PROJECT_NAME} PRIVATE UNICODE _UNICODE)
-    set_target_properties(${PROJECT_NAME} PROPERTIES
-        LINK_FLAGS "/MANIFEST:NO"
-    )
-    set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/app.manifest")
-    set_target_properties(${PROJECT_NAME} PROPERTIES
-        VS_USER_PROPS "${CMAKE_CURRENT_SOURCE_DIR}/app.manifest"
-    )
-    # Embed requireAdministrator manifest
     target_link_options(${PROJECT_NAME} PRIVATE
         "/MANIFEST:EMBED"
         "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/app.manifest"
