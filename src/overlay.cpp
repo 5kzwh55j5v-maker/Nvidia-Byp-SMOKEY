@@ -36,6 +36,13 @@ ImFont* g_body_font = nullptr;
 ImFont* g_small_font = nullptr;
 ImFont* g_button_font = nullptr;
 
+void CleanupRenderTarget() {
+    if (g_main_render_target) {
+        g_main_render_target->Release();
+        g_main_render_target = nullptr;
+    }
+}
+
 void CreateRenderTarget() {
     CleanupRenderTarget();
     if (!g_swap_chain || !g_pd3d_device) {
@@ -153,7 +160,6 @@ ImFont* LoadSizedFont(float size, float glyph_extra_x) {
     cfg.OversampleV = 4;
     cfg.PixelSnapH = true;
     cfg.GlyphExtraSpacing.x = glyph_extra_x;
-    cfg.MergeMode = true;
 
     const char* candidates[] = {
         "C:\\Windows\\Fonts\\segoeuib.ttf",
@@ -168,25 +174,22 @@ ImFont* LoadSizedFont(float size, float glyph_extra_x) {
         }
     }
 
-    cfg.MergeMode = false;
     cfg.SizePixels = size;
     return io.Fonts->AddFontDefault(&cfg);
 }
 
 void LoadAppFonts() {
-    ImGuiIO& io = ImGui::GetIO();
-    io.Fonts->AddFontDefault();
     g_body_font = LoadSizedFont(22.0f, 1.1f);
     g_title_font = LoadSizedFont(34.0f, 1.4f);
     g_button_font = LoadSizedFont(22.0f, 1.2f);
     g_small_font = LoadSizedFont(18.0f, 0.8f);
 
     if (!g_body_font) {
-        g_body_font = io.Fonts->Fonts[0];
+        g_body_font = ImGui::GetIO().Fonts->AddFontDefault();
     }
-    g_title_font = g_title_font ? g_title_font : g_body_font;
-    g_button_font = g_button_font ? g_button_font : g_body_font;
-    g_small_font = g_small_font ? g_small_font : g_body_font;
+    if (!g_title_font) g_title_font = g_body_font;
+    if (!g_button_font) g_button_font = g_body_font;
+    if (!g_small_font) g_small_font = g_body_font;
 }
 
 void ApplyWindowChrome(HWND hwnd) {
