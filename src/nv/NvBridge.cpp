@@ -141,6 +141,115 @@ static void remote_loader_end() { }
 #pragma strict_gs_check(pop)
 #pragma runtime_checks("", restore)
 
+struct UnloadData {
+    BYTE*     img_base;
+    DllMain_t dll_entry;
+};
+
+#pragma runtime_checks("", off)
+#pragma strict_gs_check(push, off)
+#pragma optimize("", off)
+__declspec(safebuffers) __declspec(noinline)
+static DWORD WINAPI remote_unloader(UnloadData* d) {
+    d->dll_entry((HINSTANCE)d->img_base, DLL_PROCESS_DETACH, NULL);
+    return 0;
+}
+__declspec(safebuffers) __declspec(noinline)
+static void remote_unloader_end() { }
+#pragma optimize("", on)
+#pragma strict_gs_check(pop)
+#pragma runtime_checks("", restore)
+
+struct InjectState {
+    DWORD  pid = 0;
+    BYTE*  base = nullptr;
+    SIZE_T size = 0;
+    DWORD  entry_rva = 0;
+    bool   mapped = false;
+};
+
+static InjectState g_inject{};
+static CRITICAL_SECTION g_inject_lock;
+static bool g_inject_lock_ready = false;
+static HANDLE g_inject_thread = nullptr;
+
+static void ensure_inject_lock() {
+    if (!g_inject_lock_ready) {
+        InitializeCriticalSection(&g_inject_lock);
+        g_inject_lock_ready = true;
+    }
+}
+
+static bool run_remote_stub(HANDLE hProc, void* stub_fn, void* stub_data, size_t data_sz, const char* label) {
+    SIZE_T stub_sz = 0x400;
+    SIZE_T region_sz = data_sz + stub_sz;
+    BYTE* stub_base = (BYTE*)VirtualAllocEx(hProc, nullptr, region_sz,
+        MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!stub_base) {
+        NV_ERR("%s VirtualAllocEx(stub) failed: %lu", label, GetLastError());
+        return false;
+    }
+
+    BYTE* data_base = stub_base;
+    BYTE* code_base = stub_base + data_sz;
+
+    if (!WriteProcessMemory(hProc, data_base, stub_data, data_sz, nullptr)) {
+        NV_ERR("%s WriteProcessMemory(data) failed: %lu", label, GetLastError());
+        VirtualFreeEx(hProc, stub_base, 0, MEM_RELEASE);
+        return false;
+    }
+    if (!WriteProcessMemory(hProc, code_base, stub_fn, stub_sz, nullptr)) {
+        NV_ERR("%s WriteProcessMemory(stub) failed: %lu", label, GetLastError());
+        VirtualFreeEx(hProc, stub_base, 0, MEM_RELEASE);
+        return false;
+    }
+
+    HANDLE hThread = CreateRemoteThread(hProc, nullptr, 0,
+        (LPTHREAD_START_ROUTINE)code_base, data_base, 0, nullptr);
+    if (!hThread) {
+        NV_ERR("%s CreateRemoteThread failed: %lu", label, GetLastError());
+        VirtualFreeEx(hProc, stub_base, 0, MEM_RELEASE);
+        return false;
+    }
+
+    DWORD wait = WaitForSingleObject(hThread, 10000);
+    if (wait == WAIT_TIMEOUT) {
+        NV_WARN("%s stub still running after 10s", label);
+    } else {
+        DWORD exit_code = 0;
+        GetExitCodeThread(hThread, &exit_code);
+        NV_OK("%s stub returned 0x%lx", label, exit_code);
+    }
+    CloseHandle(hThread);
+    VirtualFreeEx(hProc, stub_base, 0, MEM_RELEASE);
+    return true;
+}
+
+static bool unmap_image(HANDLE hProc, InjectState& state) {
+    if (!state.mapped || !state.base || !state.size) return false;
+
+    UnloadData ud{};
+    ud.img_base = state.base;
+    ud.dll_entry = (DllMain_t)(state.base + state.entry_rva);
+
+    if (!run_remote_stub(hProc, (void*)&remote_unloader, &ud, sizeof(ud), "unload")) {
+        NV_WARN("unload stub failed — freeing mapped image anyway");
+    }
+
+    if (!VirtualFreeEx(hProc, state.base, 0, MEM_RELEASE)) {
+        NV_ERR("VirtualFreeEx(image) failed: %lu", GetLastError());
+        return false;
+    }
+
+    NV_OK("unmapped nvsp-manip @ 0x%p in pid %lu", (void*)state.base, state.pid);
+    state.mapped = false;
+    state.base = nullptr;
+    state.size = 0;
+    state.entry_rva = 0;
+  state.pid = 0;
+    return true;
+}
+
 static bool map_image(HANDLE hProc, const unsigned char* data, size_t sz) {
     auto dos = (PIMAGE_DOS_HEADER)data;
     if (dos->e_magic != IMAGE_DOS_SIGNATURE) { NV_ERR("bad DOS sig"); return false; }
@@ -271,6 +380,16 @@ static bool map_image(HANDLE hProc, const unsigned char* data, size_t sz) {
     CloseHandle(hThread);
 
     VirtualFreeEx(hProc, stub_base, 0, MEM_RELEASE);
+
+    ensure_inject_lock();
+    EnterCriticalSection(&g_inject_lock);
+    g_inject.pid = GetProcessId(hProc);
+    g_inject.base = mapped_base;
+    g_inject.size = img_sz;
+    g_inject.entry_rva = nt->OptionalHeader.AddressOfEntryPoint;
+    g_inject.mapped = true;
+    LeaveCriticalSection(&g_inject_lock);
+
     NV_OK("mapped nvsp-manip @ 0x%p in pid %lu", (void*)mapped_base, GetProcessId(hProc));
     return true;
 }
@@ -303,8 +422,46 @@ static DWORD WINAPI inject_thread(LPVOID) {
 void Launch() {
     static LONG fired = 0;
     if (InterlockedExchange(&fired, 1) != 0) return;
-    HANDLE h = CreateThread(nullptr, 0, inject_thread, nullptr, 0, nullptr);
-    if (h) CloseHandle(h);
+    ensure_inject_lock();
+    g_inject_thread = CreateThread(nullptr, 0, inject_thread, nullptr, 0, nullptr);
+}
+
+void Unload() {
+    ensure_inject_lock();
+
+    if (g_inject_thread) {
+        WaitForSingleObject(g_inject_thread, 5000);
+        CloseHandle(g_inject_thread);
+        g_inject_thread = nullptr;
+    }
+
+    EnterCriticalSection(&g_inject_lock);
+    if (!g_inject.mapped || !g_inject.pid) {
+        LeaveCriticalSection(&g_inject_lock);
+        NV_INFO("unload requested but nothing is injected");
+        return;
+    }
+
+    const DWORD pid = g_inject.pid;
+    HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+    if (!hProc) {
+        NV_ERR("OpenProcess(%lu) for unload failed: %lu", pid, GetLastError());
+        g_inject.mapped = false;
+        LeaveCriticalSection(&g_inject_lock);
+        return;
+    }
+
+    unmap_image(hProc, g_inject);
+    CloseHandle(hProc);
+    LeaveCriticalSection(&g_inject_lock);
+}
+
+bool IsInjected() {
+    ensure_inject_lock();
+    EnterCriticalSection(&g_inject_lock);
+    const bool active = g_inject.mapped;
+    LeaveCriticalSection(&g_inject_lock);
+    return active;
 }
 
 } // namespace NvCore

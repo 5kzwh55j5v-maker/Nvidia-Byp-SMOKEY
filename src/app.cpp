@@ -116,6 +116,7 @@ void OnCommand(HWND hwnd, int id, int code) {
     }
 
     if (id == IDC_BTN_UNLOAD && code == BN_CLICKED) {
+        NvCore::Unload();
         DestroyWindow(hwnd);
     }
 }
