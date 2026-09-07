@@ -16,7 +16,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace {
 
-constexpr wchar_t kWindowClass[] = L"NvidiaBypSMOKEYOverlay";
+constexpr wchar_t kWindowClass[] = L"NvidiaBypOverlay";
 constexpr int kWidth = 440;
 constexpr int kHeight = 500;
 

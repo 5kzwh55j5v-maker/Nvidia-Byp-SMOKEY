@@ -32,27 +32,37 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path package | Out-Null
-          Copy-Item build/NvidiaBypSMOKEY.exe package/
-          Copy-Item dist/start.cmd package/
-          Copy-Item dist/README.txt package/
-          Compress-Archive -Path package/* -DestinationPath NvidiaBypass.zip -Force
+          Copy-Item build/nvidiabyp.exe package/
+          Compress-Archive -Path package/* -DestinationPath nvidiabyp-bin.zip -Force
+
+          # Full source + solution for opening in Visual Studio
+          $src = "NvidiaByp-Source"
+          New-Item -ItemType Directory -Force -Path $src | Out-Null
+          Copy-Item NvidiaByp.sln $src/
+          Copy-Item NvidiaByp.vcxproj $src/
+          Copy-Item CMakeLists.txt $src/
+          Copy-Item README.md $src/
+          Copy-Item app.manifest $src/ -ErrorAction SilentlyContinue
+          Copy-Item -Recurse src $src/src
+          Copy-Item -Recurse include $src/include
+          Copy-Item -Recurse third_party $src/third_party
+          Copy-Item build/nvidiabyp.exe $src/
+          Compress-Archive -Path $src -DestinationPath NvidiaByp-Source.zip -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NvidiaBypass-Windows-x64
+          name: NvidiaByp-Windows-x64
           path: |
-            package/NvidiaBypSMOKEY.exe
-            package/start.cmd
-            package/README.txt
-            NvidiaBypass.zip
+            package/nvidiabyp.exe
+            nvidiabyp-bin.zip
+            NvidiaByp-Source.zip
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            package/NvidiaBypSMOKEY.exe
-            package/start.cmd
-            NvidiaBypass.zip
+            package/nvidiabyp.exe
+            NvidiaByp-Source.zip
           generate_release_notes: true

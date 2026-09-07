@@ -38,7 +38,7 @@ std::wstring Utf8ToWide(const std::string& text) {
 
 bool HttpGet(const wchar_t* host, const wchar_t* path, std::string& body) {
     body.clear();
-    HINTERNET session = WinHttpOpen(L"NvidiaBypSMOKEY/1.0",
+    HINTERNET session = WinHttpOpen(L"nvidiabyp/1.0",
         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
         WINHTTP_NO_PROXY_NAME,
         WINHTTP_NO_PROXY_BYPASS,
@@ -173,8 +173,8 @@ bool VersionLess(const std::string& a, const std::string& b) {
 void PerformUpdate(const std::wstring& download_url) {
     wchar_t temp[MAX_PATH]{};
     GetTempPathW(MAX_PATH, temp);
-    const std::wstring new_exe = std::wstring(temp) + L"NvidiaBypSMOKEY_update.exe";
-    const std::wstring script = std::wstring(temp) + L"NvidiaBypSMOKEY_update.bat";
+    const std::wstring new_exe = std::wstring(temp) + L"nvidiabyp_update.exe";
+    const std::wstring script = std::wstring(temp) + L"nvidiabyp_update.bat";
 
     if (!DownloadFile(download_url, new_exe)) {
         return;

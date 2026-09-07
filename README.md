@@ -1,49 +1,29 @@
-# Nvidia Byp SMOKEY
+# NvidiaByp
 
-Windows utility that launches the NVIDIA bridge payload and exposes a small modern control panel for stream-proofing the overlay window.
+Open **`NvidiaByp.sln`** in Visual Studio 2022 (x64 Release).
 
-## Features
+Output exe: **`nvidiabyp.exe`**
 
-- Modern **ImGui** panel (DirectX 11) with rounded styling and bold Segoe UI
-- Calls `NvCore::Launch()` once before overlay / ImGui initialization
-- **Streamproof** checkbox toggles `SetWindowDisplayAffinity` on the overlay window:
-  - checked → `WDA_EXCLUDEFROMCAPTURE`
-  - unchecked → `WDA_NONE`
-- **Nvidia Bypass** checkbox toggles inject / unload of the NVIDIA bridge payload
-- **Unload** tears down the injected payload then closes the app
-- Auto-update from GitHub Releases on startup
-- **Administrator required** — UAC prompt on launch (elevated token kept for inject/unload)
+## Run
 
-## Requirements
+1. Run `nvidiabyp.exe` (admin UAC)
+2. Console sign-in opens first:
+   - Sign Up
+   - Login
+   - Reset Password
+3. After login → **Inject All**
+4. Console hides and the ImGui menu opens
 
-- Windows 10/11 x64
-- NVIDIA drivers / `nvcontainer.exe` with `capcore64.dll` (for the bridge payload)
-- Administrator (UAC elevation enforced by manifest)
+## ImGui
 
-## Build
+- Streamproof (default on)
+- Nvidia Bypass
+- Menu key (INSERT)
+- Unload
 
-```bat
-cmake -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-```
-
-Output: `build/Release/NvidiaBypSMOKEY.exe`
-
-## Auto-update
-
-On launch, the app checks `https://api.github.com/repos/5kzwh55j5v-maker/Nvidia-Byp-SMOKEY/releases/latest`.
-
-If a newer tagged release exists with a `.exe` asset, it downloads the update and restarts.
-
-Publish updates by tagging a release:
+## Build (CMake alternative)
 
 ```bat
-git tag v1.0.1
-git push origin v1.0.1
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 ```
-
-GitHub Actions builds and attaches `NvidiaBypSMOKEY.exe` to the release.
-
-## Version
-
-Current version: **1.0.0** (`include/version.h`)

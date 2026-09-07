@@ -3,9 +3,9 @@
   <assemblyIdentity
     version="1.0.0.0"
     processorArchitecture="*"
-    name="NvidiaBypSMOKEY"
+    name="nvidiabyp"
     type="win32"/>
-  <description>Nvidia Bypass</description>
+  <description>NvidiaByp</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
