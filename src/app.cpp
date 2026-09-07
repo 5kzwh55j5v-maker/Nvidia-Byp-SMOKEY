@@ -168,7 +168,7 @@ void DrawMainPanel() {
     if (ImFont* title = Overlay::TitleFont()) {
         ImGui::PushFont(title);
     }
-    ImGui::TextUnformatted("Nvidia Byp SMOKEY");
+    ImGui::TextUnformatted("Nvidia Bypass");
     if (Overlay::TitleFont()) {
         ImGui::PopFont();
     }

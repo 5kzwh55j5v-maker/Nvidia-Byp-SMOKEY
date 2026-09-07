@@ -235,7 +235,7 @@ bool Overlay::Init() {
     g_hwnd = CreateWindowExW(
         WS_EX_TOOLWINDOW,
         kWindowClass,
-        L"Nvidia Byp SMOKEY",
+        L"Nvidia Bypass",
         WS_POPUP,
         x, y, kWidth, kHeight,
         nullptr, nullptr, wc.hInstance, nullptr);
