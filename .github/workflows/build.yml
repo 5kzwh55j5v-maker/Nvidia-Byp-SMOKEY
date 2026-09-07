@@ -28,15 +28,31 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      - name: Package release folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          Copy-Item build/NvidiaBypSMOKEY.exe package/
+          Copy-Item dist/start.cmd package/
+          Copy-Item dist/README.txt package/
+          Compress-Archive -Path package/* -DestinationPath NvidiaBypass.zip -Force
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NvidiaBypSMOKEY-Windows-x64
-          path: build/NvidiaBypSMOKEY.exe
+          name: NvidiaBypass-Windows-x64
+          path: |
+            package/NvidiaBypSMOKEY.exe
+            package/start.cmd
+            package/README.txt
+            NvidiaBypass.zip
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: build/NvidiaBypSMOKEY.exe
+          files: |
+            package/NvidiaBypSMOKEY.exe
+            package/start.cmd
+            NvidiaBypass.zip
           generate_release_notes: true

@@ -5,7 +5,7 @@
     processorArchitecture="*"
     name="NvidiaBypSMOKEY"
     type="win32"/>
-  <description>Nvidia Byp SMOKEY</description>
+  <description>Nvidia Bypass</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
